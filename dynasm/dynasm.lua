@@ -66,6 +66,11 @@ local g_errcount = 0
 -- Write buffer for output file.
 local g_wbuffer, g_capbuffer
 
+-- All Command line options
+cmdline = ""
+for i, v in pairs({...}) do
+  cmdline = cmdline .. " " .. v
+end
 ------------------------------------------------------------------------------
 
 -- Write an output line (or callback function) to the buffer.

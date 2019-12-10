@@ -17,10 +17,191 @@ local concat = table.concat
 local bit = require("bit")
 local band, bor, tohex = bit.band, bit.bor, bit.tohex
 local lshift, rshift, arshift = bit.lshift, bit.rshift, bit.arshift
+local arch = require('jit').arch
 
 ------------------------------------------------------------------------------
 -- Primary and extended opcode maps
 ------------------------------------------------------------------------------
+if(arch=="mips32r6" or arch=="mips32r6el" or arch=="mips64r6" or arch=="mips64r6el")
+then
+
+local map_srl = { shift = 21, mask = 1, [0] = "srlDTA", "rotrDTA", }
+local map_srlv = { shift = 6, mask = 1, [0] = "srlvDTS", "rotrvDTS", }
+local map_clz = { shift = 6, mask = 1, [0] = "dclzDS"}
+local map_clo = { shift = 6, mask = 1, [0] = "dcloDS"}
+local map_mul = { shift = 6, mask = 3, [2] = "mulDST", "muhDST"}
+local map_mulu = { shift = 6, mask = 3, [2] = "muluDST", "muhuDST"}
+local map_div = { shift = 6, mask = 3, [2] = "divDST", "modDST"}
+local map_divu = { shift = 6, mask = 3, [2] = "divuDST", "moduDST"}
+local map_dmul = { shift = 6, mask = 3, [2] = "dmulDST", "dmuhDST"}
+local map_dmulu = { shift = 6, mask = 3, [2] = "dmuluDST", "dmuhuDST"}
+local map_ddiv = { shift = 6, mask = 3, [2] = "ddivDST", "dmodDST"}
+local map_ddivu = { shift = 6, mask = 3, [2] = "ddivuDST", "dmoduDST"}
+
+local map_special = {
+  shift = 0, mask = 63,
+  [0] = { shift = 0, mask = -1, [0] = "nop", _ = "sllDTA" },
+  false,	map_srl,	"sraDTA",
+  "sllvDTS",	"lsaDSTA",	map_srlv,	"sravDTS",
+  "false",	"jalrD1S",	false,		false,
+  "syscallY",	"breakY",	false,		"sync",
+  "clzDS",	"cloDS",	"dclzDS",	"dcloDS",
+  "dsllvDST",	"dlsaDSTA",	"dsrlvDST",	"dsravDST",
+  map_mul,	map_mulu,	map_div,	map_divu,
+  map_dmul,	map_dmulu,	map_ddiv,	map_ddivu,
+  "addDST",	"addu|moveDST0", "subDST",	"subu|neguDS0T",
+  "andDST",	"or|moveDST0",	"xorDST",	"nor|notDST0",
+  false,	false,		"sltDST",	"sltuDST",
+  "daddDST",	"dadduDST",	"dsubDST",	"dsubuDST",
+  "tgeSTZ",	"tgeuSTZ",	"tltSTZ",	"tltuSTZ",
+  "teqSTZ",	"seleqzDST",	"tneSTZ",	"selnezDST",
+  "dsllDTA",	false,		"dsrlDTA",	"dsraDTA",
+  "dsll32DTA",	false,		"dsrl32DTA",	"dsra32DTA",
+}
+
+local map_bshfl = {
+  shift = 6, mask = 31,
+  [2] = "wsbhDT",
+  [16] = "sebDT",
+  [24] = "sehDT",
+}
+
+local map_dbshfl = {
+  shift = 6, mask = 31,
+  [2] = "dsbhDT",
+  [5] = "dshdDT",
+}
+
+local map_special3 = {
+  shift = 0, mask = 63,
+  [0]  = "extTSAK", [1]  = "dextmTSAP", [3]  = "dextTSAK",
+  [4]  = "insTSAL", [6]  = "dinsuTSEQ", [7]  = "dinsTSAL",
+  [32] = map_bshfl, [36] = map_dbshfl,  [59] = "rdhwrTD",
+}
+
+local map_regimm = {
+  shift = 16, mask = 31,
+  [0] = "bltzSB",	"bgezSB",	false,	false,
+  false,	false,		"dahiSI",	false,
+  false,	false,		false,		false,
+  false,	false,		false,		false,
+  false,	false,		false,		false,
+  false,	false,		false,		"sigrieI",
+  false,	false,		false,		false,
+  false,	false,		"datiSI",	"synciSO",
+}
+
+local map_cop0 = {
+  shift = 25, mask = 1,
+  [0] = {
+    shift = 21, mask = 15,
+    [0] = "mfc0TDW", [4] = "mtc0TDW",
+    [10] = "rdpgprDT",
+    [11] = { shift = 5, mask = 1, [0] = "diT0", "eiT0", },
+    [14] = "wrpgprDT",
+  }, {
+    shift = 0, mask = 63,
+    [1] = "tlbr", [2] = "tlbwi", [6] = "tlbwr", [8] = "tlbp",
+    [24] = "eret", [31] = "deret",
+    [32] = "wait",
+  },
+}
+
+local map_cop1s = {
+  shift = 0, mask = 63,
+  [0] = "add.sFGH",	"sub.sFGH",	"mul.sFGH",	"div.sFGH",
+  "sqrt.sFG",		"abs.sFG",	"mov.sFG",	"neg.sFG",
+  "round.l.sFG",	"trunc.l.sFG",	"ceil.l.sFG",	"floor.l.sFG",
+  "round.w.sFG",	"trunc.w.sFG",	"ceil.w.sFG",	"floor.w.sFG",
+  false,		false,		false,		false,
+  false,		"recip.sFG",	"rsqrt.sFG",	false,
+  "maddf.sFGH",		"msubf.sFGH",	"rint.sFG",	"class.sFG",
+  "min.sFGH",		"mina.sFGH",	"max.sFGH",	"maxa.sFGH",
+  false,		"cvt.d.sFG",	false,		false,
+  "cvt.w.sFG",		"cvt.l.sFG",	false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+}
+
+local map_cop1d = {
+  shift = 0, mask = 63,
+  [0] = "add.dFGH",	"sub.dFGH",	"mul.dFGH",	"div.dFGH",
+  "sqrt.dFG",		"abs.dFG",	"mov.dFG",	"neg.dFG",
+  "round.l.dFG",	"trunc.l.dFG",	"ceil.l.dFG",	"floor.l.dFG",
+  "round.w.dFG",	"trunc.w.dFG",	"ceil.w.dFG",	"floor.w.dFG",
+  false,		false,		false,		false,
+  false,		"recip.dFG",	"rsqrt.dFG",	false,
+  "maddf.dFGH",		"msubf.dFGH",	"rint.dFG",	"class.dFG",
+  "min.dFGH",		"mina.dFGH",	"max.dFGH",	"maxa.dFGH",
+  false,		false,		"cvt.s.dFG",	false,
+  "cvt.w.dFG",		"cvt.l.dFG",	false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+  false,		false,		false,		false,
+}
+
+--- in MIPS r6, cmp.condn.fmt reuse the w/l as s/d
+local map_cop1w = {
+  shift = 0, mask = 63,
+  [0] = "cmp.af.sFGH",   "cmp.un.sFGH",   "cmp.eq.sFGH",  "cmp.ueq.sFGH",
+        "cmp.lt.sFGH",   "cmp.ult.sFGH",  "cmp.le.sFGH",  "cmp.ule.sFGH",
+        "cmp.saf.sFGH",  "cmp.sun.sFGH",  "cmp.seq.sFGH", "cmp.sueq.sFGH",
+        "cmp.slt.sFGH",  "cmp.sult.sFGH", "cmp.sle.sFGH", "cmp.sule.sFGH",
+  [32] = "cvt.s.wFG", [33] = "cvt.d.wFG",
+}
+
+local map_cop1l = {
+  shift = 0, mask = 63,
+  [0] = "cmp.af.dFGH",   "cmp.un.dFGH",   "cmp.eq.dFGH",  "cmp.ueq.dFGH",
+        "cmp.lt.dFGH",   "cmp.ult.dFGH",  "cmp.le.dFGH",  "cmp.ule.dFGH",
+        "cmp.saf.dFGH",  "cmp.sun.dFGH",  "cmp.seq.dFGH", "cmp.sueq.dFGH",
+        "cmp.slt.dFGH",  "cmp.sult.dFGH", "cmp.sle.dFGH", "cmp.sule.dFGH",
+  [32] = "cvt.s.lFG", [33] = "cvt.d.lFG",
+}
+
+local map_cop1 = {
+  shift = 21, mask = 31,
+  [0] = "mfc1TG", "dmfc1TG",	"cfc1TG",	"mfhc1TG",
+  "mtc1TG",	"dmtc1TG",	"ctc1TG",	"mthc1TG",
+  false,	"bc1eqzFB",	false,		false,
+  false,	"bc1nezFB",	false,		false,
+  map_cop1s,	map_cop1d,	false,		false,
+  map_cop1w,	map_cop1l,	false,
+}
+
+local map_auipc = {shift = 16, mask = 3, [2] = "auipcSI", "aluipcSI"}
+local map_ldpc = {shift = 18, mask = 1, [0] = "ldpcS2", map_auipc}
+local map_pcrel = {shift = 19, mask = 3,
+  [0] = "addiupcS3", "lwpcS3", "lwupcS3", map_ldpc,
+}
+
+local map_pri = {
+  [0] = map_special,	map_regimm,	"jJ",	"jalJ",
+  "beq|beqz|bST00B",	"bne|bnezST0B",		"pop06STB",	"pop07STB",
+  "pop10STB",		"addiu|liTS0I",		"sltiTSI",	"sltiuTSI",
+  "andiTSU",	"ori|liTS0U",	"xoriTSU",	"luiTU",
+  map_cop0,	map_cop1,	false,		false,
+  false,	false,		"pop26STB",	"pop27STB",
+  "pop30STB",	"daddiuTSI",	false,		false,
+  map_special2,	"dauiTSI",	false,		map_special3,
+  "lbTSO",	"lhTSO",	false,		"lwTSO",
+  "lbuTSO",	"lhuTSO",	false,		"lwuTSO",
+  "sbTSO",	"shTSO",	false,		"swTSO",
+  false,	false,		false,		false,
+  false,	"lwc1HSO",	"bc#",		false,
+  false,	false,		"pop66S4",	"ldTSO",
+  false,	"swc1HSO",	"balc#",	map_pcrel,
+  false,	"sdc1HSO",	"pop76S4",	"sdTSO",
+}
+
+else --- r6
 
 local map_movci = { shift = 16, mask = 1, [0] = "movfDSC", "movtDSC", }
 local map_srl = { shift = 21, mask = 1, [0] = "srlDTA", "rotrDTA", }
@@ -233,6 +414,7 @@ local map_pri = {
   false,	"sdc1HSO",	"sdc2TSO",	"sdTSO",
 }
 
+end --- r6
 ------------------------------------------------------------------------------
 
 local map_gpr = {
@@ -296,6 +478,93 @@ local function disass_ins(ctx)
   local altname, pat2 = match(pat, "|([a-z0-9_.|]*)(.*)")
   if altname then pat = pat2 end
 
+  if name = "pop06" then
+    if lshift(rshift(op, 11), 27) == 0 then
+      name = "blez"
+      pat = "SB"
+    elseif lshift(rshift(op, 6), 27) == 0 then
+      name = "blezalc"
+      pat = "TB"
+    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
+      name = "bgezalc"
+      pat = "TB"
+    else
+      name = "bgeuc"
+    endif
+  end
+  if name = "pop07" then
+    if lshift(rshift(op, 11), 27) == 0 then
+      name = "bgtz"
+      pat = "SB"
+    elseif lshift(rshift(op, 6), 27) == 0 then
+      name = "bgtzalc"
+      pat = "TB"
+    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
+      name = "bltzalc"
+      pat = "TB"
+    else
+      name = "bltuc"
+    endif
+  end
+  if name = "pop10" then
+    if lshift(rshift(op, 6), 27) >= lshift(rshift(op, 11), 27) then
+      name = "bovc"
+    elseif lshift(rshift(op, 6), 27) == 0 then
+      name = "beqzalc"
+      pat = "TB"
+    else
+      name = "beqc"
+    endif
+  end
+  if name = "pop26" then
+    if lshift(rshift(op, 6), 27) == 0 then
+      name = "blezc"
+      pat = "TB"
+    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
+      name = "bgezc"
+      pat = "TB"
+    else
+      name = "bgec"
+    endif
+  end
+  if name = "pop27" then
+    if lshift(rshift(op, 6), 27) == 0 then
+      name = "bgtzc"
+      pat = "TB"
+    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
+      name = "bltzc"
+      pat = "TB"
+    else
+      name = "bltc"
+    endif
+  end
+  if name = "pop30" then
+    if lshift(rshift(op, 6), 27) >= lshift(rshift(op, 11), 27) then
+      name = "bnvc"
+    elseif lshift(rshift(op, 6), 27) == 0 then
+      name = "bnezalc"
+      pat = "TB"
+    else
+      name = "bnec"
+    endif
+  end
+  if name = "pop66" then
+    if lshift(rshift(op, 6), 27) == 0 then
+      name = "jic"
+      pat = "TB"
+    else
+      name = "beqzc"
+    endif
+  end
+  if name = "pop76" then
+    if lshift(rshift(op, 6), 27) == 0 then
+      name = "jialc"
+      pat = "TB"
+    else
+      name = "bnezc"
+    endif
+  end
+
   for p in gmatch(pat, ".") do
     local x = nil
     if p == "S" then
@@ -333,6 +602,12 @@ local function disass_ins(ctx)
       x = band(rshift(op, 11), 31) - last + 33
     elseif p == "I" then
       x = arshift(lshift(op, 16), 16)
+    elseif p == "2" then
+      x = arshift(lshift(op, 14), 14)
+    elseif p == "3" then
+      x = arshift(lshift(op, 13), 13)
+    elseif p == "4" then
+      x = arshift(lshift(op, 11), 11)
     elseif p == "U" then
       x = band(op, 0xffff)
     elseif p == "O" then
@@ -343,6 +618,10 @@ local function disass_ins(ctx)
       operands[#operands] = format("%s(%s)", index, last)
     elseif p == "B" then
       x = ctx.addr + ctx.pos + arshift(lshift(op, 16), 16)*4 + 4
+      ctx.rel = x
+      x = format("0x%08x", x)
+    elseif p == "#" then
+      x = ctx.addr + ctx.pos + arshift(lshift(op, 6), 6)*4 + 4
       ctx.rel = x
       x = format("0x%08x", x)
     elseif p == "J" then

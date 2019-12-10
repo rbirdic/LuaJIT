@@ -331,16 +331,32 @@
 
 #if defined(__MIPSEL__) || defined(__MIPSEL) || defined(_MIPSEL)
 #if LUAJIT_TARGET == LUAJIT_ARCH_MIPS32
+#if __mips_isa_rev < 6
 #define LJ_ARCH_NAME		"mipsel"
+#else /* __mips_isa_rev  */
+#define LJ_ARCH_NAME        "mips32r6el"
+#endif /* __mips_isa_rev  */
 #else
+#if __mips_isa_rev < 6
 #define LJ_ARCH_NAME		"mips64el"
+#else /* __mips_isa_rev  */
+#define LJ_ARCH_NAME           "mips64r6el"
+#endif /* __mips_isa_rev  */
 #endif
 #define LJ_ARCH_ENDIAN		LUAJIT_LE
 #else
 #if LUAJIT_TARGET == LUAJIT_ARCH_MIPS32
-#define LJ_ARCH_NAME		"mips"
+#if __mips_isa_rev < 6
+#define LJ_ARCH_NAME           "mips"
+#else /* __mips_isa_rev  */
+#define LJ_ARCH_NAME           "mips32r6"
+#endif /* __mips_isa_rev  */
 #else
-#define LJ_ARCH_NAME		"mips64"
+#if __mips_isa_rev < 6
+#define LJ_ARCH_NAME           "mips64"
+#else /* __mips_isa_rev  */
+#define LJ_ARCH_NAME           "mips64r6"
+#endif /* __mips_isa_rev  */
 #endif
 #define LJ_ARCH_ENDIAN		LUAJIT_BE
 #endif
