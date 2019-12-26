@@ -223,7 +223,7 @@ typedef enum MIPSIns {
   MIPSI_ADDIU = 0x24000000,
   MIPSI_SUB = 0x00000022,
   MIPSI_SUBU = 0x00000023,
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_MUL = 0x70000002,
   MIPSI_DIV = 0x0000001a,
   MIPSI_DIVU = 0x0000001b,
@@ -261,7 +261,7 @@ typedef enum MIPSIns {
   MIPSI_B = 0x10000000,
   MIPSI_J = 0x08000000,
   MIPSI_JAL = 0x0c000000,
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_JALX = 0x74000000,
   MIPSI_JR = 0x00000008,
 #else
@@ -294,14 +294,14 @@ typedef enum MIPSIns {
 
   /* MIPS64 instructions. */
   MIPSI_DADD = 0x0000002c,
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_DADDI = 0x60000000,
 #endif
   MIPSI_DADDU = 0x0000002d,
   MIPSI_DADDIU = 0x64000000,
   MIPSI_DSUB = 0x0000002e,
   MIPSI_DSUBU = 0x0000002f,
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_DDIV = 0x0000001e,
   MIPSI_DDIVU = 0x0000001f,
   MIPSI_DMULT = 0x0000001c,
@@ -340,7 +340,7 @@ typedef enum MIPSIns {
   MIPSI_DINSU = 0x7c000006,
   MIPSI_DINS = 0x7c000007,
 
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
 #else
   MIPSI_RINT_D = 0x4620001a,
   MIPSI_RINT_S = 0x4600001a,
@@ -353,7 +353,7 @@ typedef enum MIPSIns {
   /* FP instructions. */
   MIPSI_MOV_S = 0x46000006,
   MIPSI_MOV_D = 0x46200006,
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_MOVT_D = 0x46210011,
   MIPSI_MOVF_D = 0x46200011,
 #else
@@ -395,7 +395,7 @@ typedef enum MIPSIns {
   MIPSI_DMTC1 = 0x44a00000,
   MIPSI_DMFC1 = 0x44200000,
 
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   MIPSI_BC1F = 0x45000000,
   MIPSI_BC1T = 0x45010000,
   MIPSI_C_EQ_D = 0x46200032,

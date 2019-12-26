@@ -101,7 +101,7 @@ static void asm_guard(ASMState *as, MIPSIns mi, Reg rs, Reg rt)
     as->invmcp = NULL;
     as->loopinv = 1;
     as->mcp = p+1;
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     mi = mi ^ ((mi>>28) == 1 ? 0x04000000u : 0x00010000u);  /* Invert cond. */
 #else
     if (mi == MIPSI_BC1EQZ) mi = MIPSI_BC1NEZ;
@@ -449,14 +449,13 @@ static void asm_retf(ASMState *as, IRIns *ir)
 static void asm_tointg(ASMState *as, IRIns *ir, Reg left)
 {
   Reg tmp = ra_scratch(as, rset_exclude(RSET_FPR, left));
-  Reg tmp2 = ra_scratch(as, rset_exclude(rset_exclude(RSET_FPR, left), tmp));
   Reg dest = ra_dest(as, ir, RSET_GPR);
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   asm_guard(as, MIPSI_BC1F, 0, 0);
   emit_fgh(as, MIPSI_C_EQ_D, 0, tmp, left);
 #else
-  asm_guard(as, MIPSI_BC1EQZ, 0, tmp2);
-  emit_fgh(as, MIPSI_CMP_EQ_D, tmp2, tmp, left);
+  asm_guard(as, MIPSI_BC1EQZ, 0, tmp);
+  emit_fgh(as, MIPSI_CMP_EQ_D, tmp, tmp, left);
 #endif
   emit_fg(as, MIPSI_CVT_D_W, tmp, tmp);
   emit_tg(as, MIPSI_MFC1, dest, tmp);
@@ -583,7 +582,6 @@ static void asm_conv(ASMState *as, IRIns *ir)
       Reg dest = ra_dest(as, ir, RSET_GPR);
       Reg left = ra_alloc1(as, lref, RSET_FPR);
       Reg tmp = ra_scratch(as, rset_exclude(RSET_FPR, left));
-      Reg tmp2 = ra_scratch(as, rset_exclude(rset_exclude(RSET_FPR, left), tmp));
       if (irt_isu32(ir->t)) {  /* FP to U32 conversion. */
 	/* y = (int)floor(x - 2147483648.0) ^ 0x80000000 */
 	emit_dst(as, MIPSI_XOR, dest, dest, RID_TMP);
@@ -612,12 +610,12 @@ static void asm_conv(ASMState *as, IRIns *ir)
 		     (void *)&as->J->k64[LJ_K64_M2P64],
 		     rset_exclude(RSET_GPR, dest));
 	  emit_fg(as, MIPSI_TRUNC_L_D, tmp, left);  /* Delay slot. */
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
          emit_branch(as, MIPSI_BC1T, 0, 0, l_end);
          emit_fgh(as, MIPSI_C_OLT_D, 0, left, tmp);
 #else
-         emit_branch(as, MIPSI_BC1NEZ, 0, tmp2, l_end);
-         emit_fgh(as, MIPSI_CMP_LT_D, tmp2, left, tmp);
+         emit_branch(as, MIPSI_BC1NEZ, 0, left, l_end);
+         emit_fgh(as, MIPSI_CMP_LT_D, left, left, tmp);
 #endif
 	  emit_lsptr(as, MIPSI_LDC1, (tmp & 31),
 		     (void *)&as->J->k64[LJ_K64_2P63],
@@ -629,12 +627,12 @@ static void asm_conv(ASMState *as, IRIns *ir)
 		     (void *)&as->J->k32[LJ_K32_M2P64],
 		     rset_exclude(RSET_GPR, dest));
 	  emit_fg(as, MIPSI_TRUNC_L_S, tmp, left);  /* Delay slot. */
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
          emit_branch(as, MIPSI_BC1T, 0, 0, l_end);
          emit_fgh(as, MIPSI_C_OLT_S, 0, left, tmp);
 #else
-         emit_branch(as, MIPSI_BC1NEZ, 0, tmp2, l_end);
-         emit_fgh(as, MIPSI_CMP_LT_S, tmp2, left, tmp);
+         emit_branch(as, MIPSI_BC1NEZ, 0, left, l_end);
+         emit_fgh(as, MIPSI_CMP_LT_S, left, left, tmp);
 #endif
 	  emit_lsptr(as, MIPSI_LWC1, (tmp & 31),
 		     (void *)&as->J->k32[LJ_K32_2P63],
@@ -967,7 +965,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     l_end = asm_exitstub_addr(as);
   }
   if (!LJ_SOFTFP && irt_isnum(kt)) {
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     emit_branch(as, MIPSI_BC1T, 0, 0, l_end);
     emit_fgh(as, MIPSI_C_EQ_D, 0, tmpnum, key);
 #else
@@ -1744,7 +1742,7 @@ static void asm_mul(ASMState *as, IRIns *ir)
     Reg right, left = ra_alloc2(as, ir, RSET_GPR);
     right = (left >> 8); left &= 255;
     if (LJ_64 && irt_is64(ir->t)) {
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
       emit_dst(as, MIPSI_MFLO, dest, 0, 0);
       emit_dst(as, MIPSI_DMULT, 0, left, right);
 #else
@@ -1877,7 +1875,7 @@ static void asm_mulov(ASMState *as, IRIns *ir)
 						 right), dest));
   asm_guard(as, MIPSI_BNE, RID_TMP, tmp);
   emit_dta(as, MIPSI_SRA, RID_TMP, dest, 31);
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
   emit_dst(as, MIPSI_MFHI, tmp, 0, 0);
   emit_dst(as, MIPSI_MFLO, dest, 0, 0);
   emit_dst(as, MIPSI_MULT, 0, left, right);
@@ -2108,7 +2106,7 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
     Reg dest = ra_dest(as, ir, RSET_FPR);
     Reg right, left = ra_alloc2(as, ir, RSET_FPR);
     right = (left >> 8); left &= 255;
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     if (dest == left) {
       emit_fg(as, MIPSI_MOVT_D, dest, right);
     } else {
@@ -2124,7 +2122,7 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
     Reg dest = ra_dest(as, ir, RSET_GPR);
     Reg right, left = ra_alloc2(as, ir, RSET_GPR);
     right = (left >> 8); left &= 255;
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     if (dest == left) {
       emit_dst(as, MIPSI_MOVN, dest, right, RID_TMP);
     } else {
@@ -2232,9 +2230,11 @@ static void asm_comp(ASMState *as, IRIns *ir)
     asm_sfpcomp(as, ir);
 #else
     Reg right, left = ra_alloc2(as, ir, RSET_FPR);
+#if LJ_TARGET_MIPSR6
     Reg tmp = ra_scratch(as, rset_exclude(rset_exclude(RSET_FPR, left), right));
+#endif
     right = (left >> 8); left &= 255;
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     asm_guard(as, (op&1) ? MIPSI_BC1T : MIPSI_BC1F, 0, 0);
     emit_fgh(as, MIPSI_C_OLT_D + ((op&3) ^ ((op>>2)&1)), 0, left, right);
 #else
@@ -2272,13 +2272,15 @@ static void asm_equal(ASMState *as, IRIns *ir)
 {
   Reg right, left = ra_alloc2(as, ir, (!LJ_SOFTFP && irt_isnum(ir->t)) ?
 				       RSET_FPR : RSET_GPR);
+#if LJ_TARGET_MIPSR6
   Reg tmp = ra_scratch(as, rset_exclude(rset_exclude(RSET_FPR, left), right));
+#endif
   right = (left >> 8); left &= 255;
   if (!LJ_SOFTFP32 && irt_isnum(ir->t)) {
 #if LJ_SOFTFP
     asm_sfpcomp(as, ir);
 #else
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
     asm_guard(as, (ir->o & 1) ? MIPSI_BC1T : MIPSI_BC1F, 0, 0);
     emit_fgh(as, MIPSI_C_EQ_D, 0, left, right);
 #else
@@ -2687,7 +2689,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
       if (((p[-1] ^ (px-p)) & 0xffffu) == 0 &&
 	  ((p[-1] & 0xf0000000u) == MIPSI_BEQ ||
 	   (p[-1] & 0xfc1e0000u) == MIPSI_BLTZ ||
-#if __mips_isa_rev < 6
+#if !LJ_TARGET_MIPSR6
 	   (p[-1] & 0xffe00000u) == MIPSI_BC1F)) {
 #else
            (p[-1] & 0xffe00000u) == MIPSI_BC1EQZ)) {

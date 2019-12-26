@@ -182,23 +182,76 @@ local map_pcrel = {shift = 19, mask = 3,
   [0] = "addiupcS3", "lwpcS3", "lwupcS3", map_ldpc,
 }
 
+local function maprs_popx6x7(rs, rt)
+  if rt == 0 then return 0
+  elseif rs == 0 then return 1
+  elseif rs == rt then return 2
+  else return 3 end
+end
+
+local map_pop06 = {
+  maprs = maprs_popx6x7,
+  [0] = "blezSB", "blezalcTB",  "bgezalcTB",  "bgeucSTB",
+}
+
+local map_pop07 = {
+  maprs = maprs_popx6x7,
+  [0] = "bgtzSB", "bgtzalcTB",  "bltzalcTB",  "bltucSTB",
+}
+
+local map_pop26 = {
+  maprs = maprs_popx6x7,
+  [0] = "blezlSB", "blezcTB",  "bgezcTB",  "bgecSTB",
+}
+
+local map_pop27 = {
+  maprs = maprs_popx6x7,
+  [0] = "bgtzlSB", "bgtzcTB",  "bltzcTB",  "bltcSTB",
+}
+
+local map_pop66 = {
+  maprs = maprs_popx6x7,
+  [0] = false, "jicTB",  false,  "beqzcSTB",
+}
+
+local map_pop76 = {
+  maprs = maprs_popx6x7,
+  [0] = false, "jialcTB",  false,  "bnezcSTB",
+}
+
+local function maprs_pop1030(rs, rt)
+  if rs >= rt then return 0
+  elseif rs == 0 then return 1
+  else return 2 end
+end
+
+local map_pop10 = {
+  maprs = maprs_pop1030,
+  [0] = "bovcSTB",  "beqzalcTB",  "beqcSTB",
+}
+
+local map_pop30 = {
+  maprs = maprs_pop1030,
+  [0] = "bnvcSTB",  "bnezalcTB",  "bnecSTB",
+}
+
 local map_pri = {
   [0] = map_special,	map_regimm,	"jJ",	"jalJ",
-  "beq|beqz|bST00B",	"bne|bnezST0B",		"pop06STB",	"pop07STB",
-  "pop10STB",		"addiu|liTS0I",		"sltiTSI",	"sltiuTSI",
+  "beq|beqz|bST00B",	"bne|bnezST0B",		map_pop06,	map_pop07,
+  map_pop10,		"addiu|liTS0I",		"sltiTSI",	"sltiuTSI",
   "andiTSU",	"ori|liTS0U",	"xoriTSU",	"luiTU",
   map_cop0,	map_cop1,	false,		false,
-  false,	false,		"pop26STB",	"pop27STB",
-  "pop30STB",	"daddiuTSI",	false,		false,
+  false,	false,		map_pop26,	map_pop27,
+  map_pop30,	"daddiuTSI",	false,		false,
   map_special2,	"dauiTSI",	false,		map_special3,
   "lbTSO",	"lhTSO",	false,		"lwTSO",
   "lbuTSO",	"lhuTSO",	false,		"lwuTSO",
   "sbTSO",	"shTSO",	false,		"swTSO",
   false,	false,		false,		false,
   false,	"lwc1HSO",	"bc#",		false,
-  false,	false,		"pop66S4",	"ldTSO",
+  false,	false,		map_pop66,	"ldTSO",
   false,	"swc1HSO",	"balc#",	map_pcrel,
-  false,	"sdc1HSO",	"pop76S4",	"sdTSO",
+  false,	"sdc1HSO",	map_pop76,	"sdTSO",
 }
 
 else --- r6
@@ -414,7 +467,7 @@ local map_pri = {
   false,	"sdc1HSO",	"sdc2TSO",	"sdTSO",
 }
 
-end --- r6
+end
 ------------------------------------------------------------------------------
 
 local map_gpr = {
@@ -472,98 +525,15 @@ local function disass_ins(ctx)
   local opat = map_pri[rshift(op, 26)]
   while type(opat) ~= "string" do
     if not opat then return unknown(ctx) end
-    opat = opat[band(rshift(op, opat.shift), opat.mask)] or opat._
+    if opat.maprs then
+      opat = opat[opat.maprs(band(rshift(op,21),31), band(rshift(op,16),31))]
+    else
+      opat = opat[band(rshift(op, opat.shift), opat.mask)] or opat._
+    end
   end
   local name, pat = match(opat, "^([a-z0-9_.]*)(.*)")
   local altname, pat2 = match(pat, "|([a-z0-9_.|]*)(.*)")
   if altname then pat = pat2 end
-
-  if name = "pop06" then
-    if lshift(rshift(op, 11), 27) == 0 then
-      name = "blez"
-      pat = "SB"
-    elseif lshift(rshift(op, 6), 27) == 0 then
-      name = "blezalc"
-      pat = "TB"
-    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
-      name = "bgezalc"
-      pat = "TB"
-    else
-      name = "bgeuc"
-    endif
-  end
-  if name = "pop07" then
-    if lshift(rshift(op, 11), 27) == 0 then
-      name = "bgtz"
-      pat = "SB"
-    elseif lshift(rshift(op, 6), 27) == 0 then
-      name = "bgtzalc"
-      pat = "TB"
-    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
-      name = "bltzalc"
-      pat = "TB"
-    else
-      name = "bltuc"
-    endif
-  end
-  if name = "pop10" then
-    if lshift(rshift(op, 6), 27) >= lshift(rshift(op, 11), 27) then
-      name = "bovc"
-    elseif lshift(rshift(op, 6), 27) == 0 then
-      name = "beqzalc"
-      pat = "TB"
-    else
-      name = "beqc"
-    endif
-  end
-  if name = "pop26" then
-    if lshift(rshift(op, 6), 27) == 0 then
-      name = "blezc"
-      pat = "TB"
-    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
-      name = "bgezc"
-      pat = "TB"
-    else
-      name = "bgec"
-    endif
-  end
-  if name = "pop27" then
-    if lshift(rshift(op, 6), 27) == 0 then
-      name = "bgtzc"
-      pat = "TB"
-    elseif lshift(rshift(op, 6), 27) == lshift(rshift(op, 11), 27) then
-      name = "bltzc"
-      pat = "TB"
-    else
-      name = "bltc"
-    endif
-  end
-  if name = "pop30" then
-    if lshift(rshift(op, 6), 27) >= lshift(rshift(op, 11), 27) then
-      name = "bnvc"
-    elseif lshift(rshift(op, 6), 27) == 0 then
-      name = "bnezalc"
-      pat = "TB"
-    else
-      name = "bnec"
-    endif
-  end
-  if name = "pop66" then
-    if lshift(rshift(op, 6), 27) == 0 then
-      name = "jic"
-      pat = "TB"
-    else
-      name = "beqzc"
-    endif
-  end
-  if name = "pop76" then
-    if lshift(rshift(op, 6), 27) == 0 then
-      name = "jialc"
-      pat = "TB"
-    else
-      name = "bnezc"
-    endif
-  end
 
   for p in gmatch(pat, ".") do
     local x = nil

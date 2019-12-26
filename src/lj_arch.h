@@ -330,6 +330,9 @@
 #elif LUAJIT_TARGET == LUAJIT_ARCH_MIPS32 || LUAJIT_TARGET == LUAJIT_ARCH_MIPS64
 
 #if defined(__MIPSEL__) || defined(__MIPSEL) || defined(_MIPSEL)
+#if __mips_isa_rev >= 6
+#define LJ_TARGET_MIPSR6        1
+#endif
 #if LUAJIT_TARGET == LUAJIT_ARCH_MIPS32
 #if __mips_isa_rev < 6
 #define LJ_ARCH_NAME		"mipsel"
